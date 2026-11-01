@@ -1,0 +1,857 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#d4272b">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="赤シート">
+<title>マイ赤シート</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Shippori+Mincho+B1:wght@500;700&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap">
+<style>
+/* Layout: toolbar above one tall sheet of white paper; a red film floats over the paper and is moved by its edge grips. Study, detail and progress panes replace the paper. */
+:root{
+  color-scheme:light;
+  --bg:#e8ebef; --panel:#f5f6f8; --fg:#1b1f25; --muted:#5a6470; --line:#cbd1d9;
+  --accent:#d4272b; --accent-fg:#ffffff; --focus:#1f5fd6;
+  /* the paper never changes with the theme: the red-sheet effect needs pure white under pure red */
+  --paper:#ffffff; --ink:#15171c; --ans:#ff5a4f; --rule:#e4e7ec; --hit:#c0241f; --sub:#59606a; --good:#1a7f37;
+  --lv0:#cfd4db; --lv1:#f3b9b3; --lv2:#e8706a; --lv3:#b3201f;
+  --font-ui:"Zen Kaku Gothic New","Hiragino Kaku Gothic ProN","Yu Gothic",system-ui,sans-serif;
+  --font-word:"Shippori Mincho B1","Hiragino Mincho ProN","Yu Mincho",serif;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#14171b; --panel:#1d2126; --fg:#e8ebef; --muted:#98a2ad; --line:#2f353c;
+    --accent:#ff6b5f; --accent-fg:#1a0a09; --focus:#7fb0ff; color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#14171b; --panel:#1d2126; --fg:#e8ebef; --muted:#98a2ad; --line:#2f353c;
+  --accent:#ff6b5f; --accent-fg:#1a0a09; --focus:#7fb0ff; color-scheme:dark;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--good:#4cc27a;--lv0:#434a53;--lv1:#8a4540;--lv2:#c4524b;--lv3:#ff7a6e}}
+:root[data-theme="dark"]{--good:#4cc27a;--lv0:#434a53;--lv1:#8a4540;--lv2:#c4524b;--lv3:#ff7a6e}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+[hidden]{display:none!important}
+html{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+body{
+  background:var(--bg); color:var(--fg); font-family:var(--font-ui); font-size:15px; line-height:1.6;
+  display:flex; flex-direction:column; gap:10px; padding-block:12px;
+  padding-left:max(16px, env(safe-area-inset-left, 0px));
+  padding-right:max(16px, env(safe-area-inset-right, 0px));
+}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+
+.top{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px}
+.brand{display:flex;align-items:center;gap:8px;margin-right:auto}
+.brand i{width:14px;height:14px;background:var(--accent);display:block;border-radius:2px}
+h1{margin:0;font-size:1.15rem;font-weight:700;letter-spacing:.04em}
+.deckbar{display:flex;gap:6px;min-width:0}
+select{min-width:0;max-width:52vw;min-height:38px;padding:6px 10px;border:1px solid var(--line);background:var(--panel);border-radius:6px}
+.status{font-size:.78rem;color:var(--muted);width:100%;text-align:right;min-height:1.2em}
+@media(min-width:560px){.status{width:auto}}
+
+.tools{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.btn{min-height:38px;padding:6px 12px;border:1px solid var(--line);background:var(--panel);border-radius:6px;cursor:pointer;white-space:nowrap}
+a.btn{display:inline-flex;align-items:center;justify-content:center;text-decoration:none;color:inherit}
+.btn:hover{border-color:var(--muted)}
+.btn:disabled{opacity:.55;cursor:default}
+.btn[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-fg);font-weight:700}
+.btn.primary{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+.btn.danger{color:var(--accent);border-color:var(--accent)}
+.btn.danger.armed{background:var(--accent);color:var(--accent-fg)}
+.seg{display:inline-flex}
+.seg .btn{border-radius:0}
+.seg .btn:first-child{border-radius:6px 0 0 6px}
+.seg .btn:last-child{border-radius:0 6px 6px 0}
+.seg .btn+.btn{margin-left:-1px}
+.count{margin-left:auto;font-size:.85rem;color:var(--muted);font-variant-numeric:tabular-nums}
+
+.stage{position:relative;flex:1;min-height:300px;background:var(--paper);border:1px solid var(--line);border-radius:6px;overflow:hidden;isolation:isolate}
+.scroller{position:absolute;inset:0;overflow-y:auto;overscroll-behavior:contain;background:var(--paper);color:var(--ink)}
+.row{display:grid;grid-template-columns:48px minmax(0,1fr) minmax(0,1.3fr);align-items:center;gap:10px;padding:14px 14px 14px 6px;border-bottom:1px solid var(--rule)}
+.cell{min-width:0;overflow-wrap:anywhere;cursor:pointer}
+.cell.t{font-family:var(--font-word);font-weight:700;font-size:1.2rem;line-height:1.4;color:var(--ink)}
+.cell.m{font-family:var(--font-word);font-weight:500;font-size:1.05rem;color:var(--ink)}
+.r{color:var(--ans)}
+.row.show .r{color:var(--ink)}
+.row.done .cell{opacity:.55}
+.info{border:0;background:transparent;color:#6b7280;cursor:pointer;font:inherit;font-size:.85rem;padding:0 6px;min-height:28px;vertical-align:middle}
+.chk{width:48px;height:48px;border:0;background:transparent;cursor:pointer;display:grid;place-items:center;padding:0}
+.chk b{width:32px;height:32px;border:2px solid #aab1ba;border-radius:50%;display:grid;place-items:center;font-size:.9rem;font-weight:700;color:var(--ink);background:#fff;font-family:var(--font-ui)}
+.chk[data-lv="0"] b{color:#8b929b}
+.chk[data-lv="3"] b{background:var(--ink);border-color:var(--ink);color:#fff}
+.empty{padding:40px 20px;text-align:center;color:#59606a}
+
+.film{position:absolute;left:0;right:0;background:#ff0000;mix-blend-mode:multiply;pointer-events:none;box-shadow:inset 0 1px 0 rgba(0,0,0,.28),inset 0 -1px 0 rgba(0,0,0,.28)}
+.grip{position:absolute;left:50%;transform:translateX(-50%);width:min(240px,60%);height:36px;border:0;padding:0;background:transparent;display:grid;place-items:center;cursor:grab;touch-action:none}
+.grip:active{cursor:grabbing}
+.grip i{display:block;width:76px;height:9px;border-radius:99px;background:#fff;box-shadow:0 0 0 1.5px rgba(0,0,0,.6)}
+.tip{margin:0;font-size:.78rem;color:var(--muted)}
+
+.editor{flex:1;min-height:0;overflow:auto;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:16px;display:flex;flex-direction:column;gap:22px}
+.editor h2{margin:0 0 8px;font-size:.95rem;font-weight:700;letter-spacing:.04em}
+.editor label{display:block;margin-bottom:6px;font-size:.85rem;color:var(--muted)}
+.editor input,.editor textarea{min-width:0;width:100%;padding:8px 10px;border:1px solid var(--line);background:var(--bg);border-radius:6px}
+.editor textarea{resize:vertical}
+.inline{display:flex;flex-wrap:wrap;gap:8px}
+.inline input{flex:1 1 200px;width:auto}
+.add{display:flex;flex-wrap:wrap;gap:8px}
+.add input{flex:1 1 150px;width:auto}
+.hint{margin:8px 0 0;font-size:.8rem;color:var(--muted)}
+.er{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.3fr);gap:8px;margin-bottom:14px}
+.er .act{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:8px}
+.er .act .btn{padding:4px 10px;min-height:34px}
+.er .act select{max-width:100%;min-height:34px}
+.er .lvmark{font-size:.8rem;color:var(--muted);align-self:center;margin-left:auto}
+
+.study{flex:1;min-height:0;overflow:auto;display:flex;flex-direction:column;align-items:center;gap:14px;padding:10px 0}
+.study>*{width:min(560px,100%);flex:none}
+.meta{display:flex;justify-content:space-between;font-size:.85rem;color:var(--muted);font-variant-numeric:tabular-nums}
+.prog{height:6px;background:var(--line);border-radius:3px;overflow:hidden}
+.prog i{display:block;height:100%;background:var(--accent)}
+.sc{background:var(--paper);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:28px 22px;min-height:200px;display:flex;flex-direction:column;justify-content:center;gap:16px;text-align:center;cursor:pointer}
+.sc.plain{cursor:default;min-height:140px}
+.sc .q{font-family:var(--font-word);font-weight:700;font-size:1.7rem;line-height:1.45;overflow-wrap:anywhere}
+.sc .a{font-family:var(--font-word);font-weight:500;font-size:1.25rem;color:var(--hit);overflow-wrap:anywhere;border-top:1px solid var(--rule);padding-top:16px}
+.sc .eg{font-size:.9rem;color:var(--sub);text-align:left;border-top:1px solid var(--rule);padding-top:12px}
+.sc .big{margin:0;font-family:var(--font-word);font-weight:700;font-size:1.6rem}
+.sc p{margin:0}
+.sc .sub{font-size:.85rem;color:#59606a}
+.hintt{font-size:.8rem;color:#59606a}
+.blank{letter-spacing:.1em;color:#8b929b}
+.hit{color:var(--hit)}
+.wl{margin:0;padding:0;list-style:none;text-align:left;display:grid;gap:4px;font-size:.95rem}
+.row2{display:flex;flex-wrap:wrap;gap:10px}
+.row2 .btn{flex:1 1 130px;min-height:48px}
+.row2 .btn small{display:block;font-size:.7rem;font-weight:400;opacity:.8}
+.row2.sm .btn{min-height:38px;flex:0 1 auto}
+.opt{display:block;width:100%;min-height:48px;text-align:left;white-space:normal;font-size:1rem}
+.opt.ok{box-shadow:inset 0 0 0 2px var(--good);border-color:var(--good)}
+.opt.bad{box-shadow:inset 0 0 0 2px var(--accent);border-color:var(--accent)}
+.opt:disabled{cursor:default;color:var(--fg);opacity:1}
+
+.dt{background:var(--paper);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:20px 18px;display:grid;gap:18px;text-align:left}
+.dw{font-family:var(--font-word);font-weight:700;font-size:1.8rem;line-height:1.3;overflow-wrap:anywhere}
+.dm{color:var(--sub);font-size:.9rem;margin-top:2px}
+.dt h3{margin:0 0 4px;font-size:.75rem;letter-spacing:.08em;color:var(--sub);font-weight:700}
+.dt p{margin:0;white-space:pre-line;overflow-wrap:anywhere}
+.dt .mean{font-family:var(--font-word);font-size:1.2rem;font-weight:500;color:var(--hit)}
+.ex{list-style:none;margin:0;padding:0;display:grid;gap:10px}
+.ex .en{display:block;font-family:var(--font-word);font-weight:500;overflow-wrap:anywhere}
+.ex .ja{display:block;color:var(--sub);font-size:.9rem}
+.tags{display:flex;flex-wrap:wrap;gap:6px}
+.tags span{border:1px solid var(--rule);border-radius:4px;padding:2px 8px;font-size:.9rem}
+.nocard{color:var(--sub);font-size:.9rem}
+
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px}
+.tile{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:10px 12px}
+.tile b{display:block;font-size:1.5rem;line-height:1.2;font-variant-numeric:tabular-nums}
+.tile span{font-size:.78rem;color:var(--muted)}
+.pn{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:14px;display:grid;gap:10px}
+.pn h2{margin:0;font-size:.95rem}
+.pn .note{margin:0;font-size:.78rem;color:var(--muted)}
+.chart{width:100%;height:auto;display:block;overflow:visible}
+.chart .ax{fill:var(--muted);font-size:9px;font-family:var(--font-ui)}
+.chart .gl{stroke:var(--line);stroke-width:1}
+.chart .b1{fill:var(--accent)}
+.chart .b2{fill:var(--muted)}
+.lg{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:.8rem;color:var(--muted)}
+.lg i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;vertical-align:-1px}
+.lvbar{display:flex;height:14px;border-radius:3px;overflow:hidden;background:var(--line)}
+.lvbar i{display:block;height:100%}
+.gaps{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px}
+.gaps label{font-size:.8rem;color:var(--muted);display:grid;gap:4px}
+.gaps input{width:100%;min-height:38px;padding:6px 8px;border:1px solid var(--line);background:var(--bg);border-radius:6px}
+@media (prefers-reduced-motion: no-preference){.btn{transition:background .12s,border-color .12s}}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="brand"><i></i><h1>マイ赤シート</h1></div>
+  <div class="deckbar">
+    <select id="deckSel" aria-label="単語帳を選ぶ"></select>
+    <button class="btn" id="newDeck" type="button">＋ 単語帳</button>
+  </div>
+  <div class="status" id="status" role="status"></div>
+</header>
+
+<div class="tools">
+  <div class="seg" role="group" aria-label="学習のしかた">
+    <button class="btn" id="vL" type="button" aria-pressed="true">一覧</button>
+    <button class="btn" id="vC" type="button" aria-pressed="false">カード</button>
+    <button class="btn" id="vQ" type="button" aria-pressed="false">クイズ</button>
+    <button class="btn" id="vS" type="button" aria-pressed="false">進捗</button>
+  </div>
+  <button class="btn" id="bSheet" type="button" aria-pressed="true">赤シート</button>
+  <button class="btn" id="bFull" type="button">全面にかける</button>
+  <div class="seg" role="group" aria-label="隠す側">
+    <button class="btn" id="mM" type="button" aria-pressed="true">意味を隠す</button>
+    <button class="btn" id="mT" type="button" aria-pressed="false">単語を隠す</button>
+  </div>
+  <button class="btn" id="bShuf" type="button">シャッフル</button>
+  <button class="btn" id="bOnly" type="button" aria-pressed="false">完璧を除く</button>
+  <button class="btn" id="bEdit" type="button" aria-pressed="false">編集</button>
+  <span class="count" id="count"></span>
+</div>
+
+<main class="stage" id="stage">
+  <div class="scroller" id="scroller"><div id="list"></div></div>
+  <div class="film" id="film"></div>
+  <button class="grip" id="gripT" type="button" aria-label="シートの上端を動かす"><i></i></button>
+  <button class="grip" id="gripB" type="button" aria-label="シートを上下に動かす"><i></i></button>
+</main>
+<section class="study" id="study" hidden></section>
+<section class="editor" id="editor" hidden></section>
+<p class="tip" id="tip">持ち手をドラッグでシートを動かします。行をタップすると答えが見えます。左の記号で習熟度（✕わからない △うろ覚え ○わかる ◎完璧）を切り替え、ⓘで詳しいカードを開きます。</p>
+
+<script>
+(function(){
+  var $ = function(s){return document.querySelector(s)};
+  var uid = function(){return Math.random().toString(36).slice(2,9)};
+  var clamp = function(v,a,b){return Math.max(a,Math.min(b,v))};
+  var esc = function(s){return String(s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})};
+  var fmt = function(s){return esc(s).replace(/\[\[(.+?)\]\]/g,'<span class="r">$1</span>')};
+  function plain(s){return String(s).replace(/\[\[(.+?)\]\]/g,'$1')}
+  function blank(s,reveal){return esc(s).replace(/\[\[(.+?)\]\]/g, reveal?'<b class="hit">$1</b>':'<span class="blank">＿＿＿</span>')}
+  function str(v){return typeof v==='string'?v.trim():''}
+
+  var LS = 'akashiito.v1', DAY = 864e5, CH = 40;
+  var LV = ['わからない','うろ覚え','わかる','完璧'], SYM = ['✕','△','○','◎'];
+  var S = {decks:[], active:null, mode:'m', only:false, sheetOn:true, edit:false, order:null, view:'list', detail:null, gap:[0,1,4,14], log:{}};
+  var C = null, Q = null, shown = new Set();
+  var dirty = new Set(), prefsDirty = false, touched = false, col = null, saving = false, timer = null;
+  var gone = {}, written = {};
+  var HAS_TTS = !!window.speechSynthesis;
+
+  /* ---------- data ---------- */
+  function norm(d){
+    d.words = (d.words||[]).map(function(w){
+      var lv = typeof w.lv==='number' ? w.lv : (w.k ? 3 : 0);
+      return {id:w.id||uid(), t:String(w.t||''), m:String(w.m||''), lv:clamp(lv|0,0,3), n:+w.n||0, x:w.x||null};
+    });
+    return d;
+  }
+  function sample(){
+    var w = [
+      ['abandon','見捨てる'],['accomplish','成し遂げる'],['ambiguous','あいまいな'],
+      ['benefit','利益、恩恵'],['consequence','結果'],['deliberate','意図的な、熟慮した'],
+      ['diminish','減少する'],['She made an [[essential]] point.','彼女は重要な指摘をした。'],
+      ['inevitable','避けられない'],['reluctant','気が進まない']
+    ].map(function(p){return {id:uid(), t:p[0], m:p[1], lv:0, n:0, x:null}});
+    w[9].x = {
+      ipa:'/rɪˈlʌktənt/', pos:'形容詞',
+      ex:[{en:'He was reluctant to admit his mistake.',ja:'彼は自分の間違いを認めたがらなかった。'},
+          {en:'She gave a reluctant smile.',ja:'彼女は気の進まない様子で微笑んだ。'}],
+      idioms:[],
+      core:'「やりたくない気持ちが引っかかって、体が前に進まない」感じ。強く拒むのではなく、ためらいながら従うときの抵抗感がコアです。',
+      scenes:'頼まれごとや決断を前に、本心では乗り気でないときに使います。be reluctant to + 動詞 の形が基本です。',
+      etym:'ラテン語 reluctari（抵抗する）に由来。re-（逆らって）と luctari（もがく、格闘する）が合わさった語です。',
+      forms:'比較級 more reluctant / 最上級 most reluctant',
+      deriv:['reluctance（名詞：気が進まないこと）','reluctantly（副詞：しぶしぶ）'],
+      syn:['unwilling','hesitant','loath'], ant:['willing','eager'],
+      usuk:'米英で意味や使い方の大きな違いはありません。'
+    };
+    return {id:'sample', name:'英単語（サンプル）', c:Date.now(), words:w};
+  }
+  function deck(){return S.decks.find(function(d){return d.id===S.active})}
+  function wordById(id){return deck().words.find(function(x){return x.id===id})}
+  function dayKey(t){var d = new Date(t||Date.now()); return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2)}
+  function bump(f,n){
+    var k = dayKey(), e = S.log[k] || (S.log[k] = {a:0,r:0});
+    e[f] += (n||1);
+    var ks = Object.keys(S.log).sort();
+    while(ks.length>120) delete S.log[ks.shift()];
+  }
+  function setLv(w,lv,count){
+    w.lv = clamp(lv,0,3); w.n = Date.now()+S.gap[w.lv]*DAY;
+    if(count) bump('r');
+  }
+  function dueIn(d){var t = Date.now(); return d.words.filter(function(w){return w.n<=t}).length}
+  function fmtDays(d){return d<1 ? Math.max(1,Math.round(d*24))+'時間後' : (d%1 ? d.toFixed(1) : d)+'日後'}
+
+  /* ---------- persistence ---------- */
+  function readLocal(){try{var r = localStorage.getItem(LS); return r ? JSON.parse(r) : null}catch(e){return null}}
+  function writeLocal(){
+    try{localStorage.setItem(LS, JSON.stringify({decks:S.decks, active:S.active, mode:S.mode, only:S.only, gap:S.gap, log:S.log})); return true}
+    catch(e){return false}
+  }
+  function setStatus(t){$('#status').textContent = t}
+  function touch(deckId){
+    touched = true;
+    setStatus(writeLocal() ? 'このブラウザに保存しました' : '保存できませんでした。バックアップを書き出してください');
+  }
+
+  /* ---------- AI cards: copy a prompt into any AI chat, paste the JSON back ---------- */
+  function arr(v){return Array.isArray(v) ? v.map(str).filter(Boolean).slice(0,8) : []}
+  function pairs(v){return Array.isArray(v) ? v.map(function(p){return {en:str(p&&p.en), ja:str(p&&p.ja)}}).filter(function(p){return p.en}).slice(0,5) : []}
+  function cleanX(o){
+    return {ipa:str(o.ipa), pos:str(o.pos), ex:pairs(o.ex), idioms:pairs(o.idioms), core:str(o.core), scenes:str(o.scenes),
+      etym:str(o.etym), forms:str(o.forms), deriv:arr(o.deriv), syn:arr(o.syn), ant:arr(o.ant), usuk:str(o.usuk)};
+  }
+  function aiPrompt(items){
+    return '英語学習アプリの単語カードを作ります。次の英単語・熟語・フレーズそれぞれについて、日本語話者の学習者向けに内容を作り、JSON配列だけを返してください（前置きや説明は不要です）。入力の順番どおり、1項目につき1オブジェクトです。\n'
+      + '入力:\n' + items.map(function(t,i){return (i+1)+'. '+t}).join('\n') + '\n\n'
+      + '各オブジェクトの形:\n'
+      + '{"t":"見出し語（綴りを整えたもの）","m":"日本語の意味（品詞ごとに簡潔に、全体で60字以内）","ipa":"米音の発音記号","pos":"品詞",'
+      + '"ex":[{"en":"自然な英語の例文","ja":"日本語訳"}]（3つ）,'
+      + '"idioms":[{"en":"関連するイディオムや決まり文句","ja":"意味"}]（0〜3つ。無ければ空配列）,'
+      + '"core":"コアイメージの解説（2〜3文）","scenes":"どんな場面で使うかの解説（2〜3文）","etym":"語源（確かな範囲で。不明なら空文字）",'
+      + '"forms":"活用形（動詞は原形・過去・過去分詞・現在分詞、名詞は複数形など）","deriv":["派生語（品詞と意味つき）"],"syn":["類義語"],"ant":["反意語"],'
+      + '"usuk":"米英での使い方・綴り・発音の違い。違いが無ければ「大きな違いはありません」"}\n'
+      + '確かでない事実は書かず、その項目は空文字か空配列にしてください。';
+  }
+  function parseJson(text){
+    var t = String(text).trim(), m = t.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if(m) t = m[1].trim();
+    try{return JSON.parse(t)}catch(e){}
+    var a = t.indexOf('['), b = t.lastIndexOf(']');
+    if(a>=0 && b>a){try{return JSON.parse(t.slice(a,b+1))}catch(e){}}
+    a = t.indexOf('{'); b = t.lastIndexOf('}');
+    if(a>=0 && b>a){try{return JSON.parse(t.slice(a,b+1))}catch(e){}}
+    return null;
+  }
+  function importCards(d, text){
+    var r = parseJson(text);
+    if(r && !Array.isArray(r)) r = [r];
+    if(!r) return -1;
+    var n = 0, added = 0;
+    r.forEach(function(o){
+      if(!o || typeof o!=='object') return;
+      var title = str(o.t); if(!title) return;
+      var key = plain(title).toLowerCase();
+      var w = d.words.find(function(x){return plain(x.t).toLowerCase()===key});
+      if(w){ w.x = cleanX(o); if(!w.m && str(o.m)) w.m = str(o.m) }
+      else { d.words.push({id:uid(), t:title, m:str(o.m), lv:0, n:0, x:cleanX(o)}); added++ }
+      n++;
+    });
+    if(added) bump('a', added);
+    return n;
+  }
+  function exportData(){
+    var data = JSON.stringify({app:'akashiito', v:1, decks:S.decks.map(function(d){return {id:d.id, name:d.name, c:d.c, words:d.words}}), gap:S.gap, log:S.log}, null, 1);
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([data], {type:'application/json'}));
+    a.download = 'akashiito-backup-'+dayKey()+'.json';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function(){URL.revokeObjectURL(a.href)}, 2000);
+    setStatus('バックアップを書き出しました');
+  }
+  function importData(text){
+    var o = parseJson(text);
+    if(!o || o.app!=='akashiito' || !Array.isArray(o.decks)) return false;
+    var sm = S.decks.find(function(x){return x.id==='sample'});
+    if(sm && S.decks.length>1 || (sm && o.decks.length)){
+      /* an untouched sample deck is dropped so it doesn't pile up next to restored data */
+      if(sm.words.length===10 && sm.words.every(function(w){return w.lv===0 && w.n===0})){
+        S.decks = S.decks.filter(function(x){return x!==sm});
+        if(S.active==='sample') S.active = null;
+      }
+    }
+    o.decks.forEach(function(nd){
+      nd = norm({id:nd.id || uid(), name:nd.name || '単語帳', c:nd.c || 0, words:nd.words});
+      var i = S.decks.findIndex(function(x){return x.id===nd.id});
+      if(i>=0) S.decks[i] = nd; else S.decks.push(nd);
+    });
+    if(Array.isArray(o.gap) && o.gap.length===4) S.gap = o.gap.map(function(v){return Math.max(0,+v||0)});
+    if(o.log && typeof o.log==='object') Object.keys(o.log).forEach(function(k){S.log[k] = o.log[k]});
+    if(!S.decks.some(function(x){return x.id===S.active})) S.active = S.decks[0].id;
+    return true;
+  }
+
+  /* ---------- rendering: list ---------- */
+  function viewWords(){
+    var d = deck(), w = d.words.slice();
+    if(S.order){
+      var idx = new Map(S.order.map(function(id,i){return [id,i]}));
+      w.sort(function(a,b){return (idx.has(a.id)?idx.get(a.id):1e9)-(idx.has(b.id)?idx.get(b.id):1e9)});
+    }
+    if(S.only) w = w.filter(function(x){return x.lv<3});
+    return w;
+  }
+  function cell(s, all){var h = fmt(s); return all ? '<span class="r">'+h+'</span>' : h}
+  function renderList(){
+    var w = viewWords();
+    $('#list').innerHTML = w.length ? w.map(function(x){
+      return '<div class="row'+(x.lv>=3?' done':'')+(shown.has(x.id)?' show':'')+'" data-id="'+x.id+'">'
+        + '<button class="chk" type="button" data-lv="'+x.lv+'" aria-label="習熟度 '+LV[x.lv]+'"><b>'+SYM[x.lv]+'</b></button>'
+        + '<div class="cell t">'+cell(x.t, S.mode==='t')+'<button class="info" type="button" data-info="1" aria-label="詳しいカードを開く">ⓘ</button></div>'
+        + '<div class="cell m">'+cell(x.m, S.mode==='m')+'</div></div>';
+    }).join('') : '<div class="empty">'+(deck().words.length ? '対象の単語はありません。' : 'この単語帳にはまだ単語がありません。「編集」から追加できます。')+'</div>';
+  }
+  function renderCount(){
+    var d = deck(), k = d.words.filter(function(x){return x.lv>=3}).length, all = 0;
+    S.decks.forEach(function(x){all += dueIn(x)});
+    $('#count').textContent = '復習 '+dueIn(d)+'語 ・ 完璧 '+k+' / '+d.words.length;
+    $('#vC').textContent = 'カード'+(all ? ' ('+all+')' : '');
+  }
+  function renderDecks(){
+    $('#deckSel').innerHTML = S.decks.map(function(d){
+      return '<option value="'+d.id+'"'+(d.id===S.active?' selected':'')+'>'+esc(d.name)+'</option>';
+    }).join('');
+  }
+  function renderBar(){
+    $('#bSheet').setAttribute('aria-pressed', S.sheetOn);
+    $('#mM').setAttribute('aria-pressed', S.mode==='m');
+    $('#mT').setAttribute('aria-pressed', S.mode==='t');
+    $('#bOnly').setAttribute('aria-pressed', S.only);
+    $('#bEdit').setAttribute('aria-pressed', S.edit);
+    $('#bEdit').textContent = S.edit ? '編集を終える' : '編集';
+    var L = S.view==='list' && !S.detail;
+    $('#vL').setAttribute('aria-pressed', S.view==='list');
+    $('#vC').setAttribute('aria-pressed', S.view==='card');
+    $('#vQ').setAttribute('aria-pressed', S.view==='quiz');
+    $('#vS').setAttribute('aria-pressed', S.view==='stats');
+    $('#bSheet').hidden = !L; $('#bFull').hidden = !L;
+    $('#film').hidden = !S.sheetOn || S.edit || !L;
+    $('#bFull').disabled = !S.sheetOn || S.edit;
+    $('#stage').hidden = S.edit || !L;
+    $('#tip').hidden = S.edit || !L;
+    $('#study').hidden = S.edit || L;
+    $('#editor').hidden = !S.edit;
+  }
+  function render(){
+    renderDecks(); renderBar(); renderCount();
+    if(S.edit) renderEditor();
+    else if(S.view==='list' && !S.detail){ renderList(); requestAnimationFrame(layoutSheet) }
+    else renderStudy();
+  }
+
+  /* ---------- sheet ---------- */
+  var sheet = {top:null, h:null};
+  var film = $('#film'), gripT = $('#gripT'), gripB = $('#gripB'), stage = $('#stage');
+  function layoutSheet(){
+    var H = stage.clientHeight;
+    var on = S.sheetOn && !S.edit && S.view==='list' && !S.detail;
+    gripT.hidden = gripB.hidden = !on;
+    if(!on || !H) return;
+    if(sheet.top===null){sheet.top = Math.round(H*0.2); sheet.h = Math.round(H*0.55)}
+    sheet.h = clamp(sheet.h, 56, H);
+    sheet.top = clamp(sheet.top, -(sheet.h-56), H-40);
+    film.style.top = sheet.top+'px';
+    film.style.height = sheet.h+'px';
+    gripB.style.top = clamp(sheet.top+sheet.h-18, 0, H-36)+'px';
+    gripT.style.top = clamp(sheet.top-18, 0, H-36)+'px';
+    gripT.hidden = sheet.top <= 4;
+  }
+  function drag(el, onMove){
+    el.addEventListener('pointerdown', function(e){
+      e.preventDefault();
+      try{el.setPointerCapture(e.pointerId)}catch(_){}
+      var y0 = e.clientY, t0 = sheet.top, b0 = sheet.top+sheet.h;
+      function mv(ev){onMove(ev.clientY-y0, t0, b0)}
+      function up(){el.removeEventListener('pointermove',mv); el.removeEventListener('pointerup',up); el.removeEventListener('pointercancel',up)}
+      el.addEventListener('pointermove',mv); el.addEventListener('pointerup',up); el.addEventListener('pointercancel',up);
+    });
+  }
+  function moveBy(dy, t0){sheet.top = clamp(t0+dy, -(sheet.h-56), stage.clientHeight-40); layoutSheet()}
+  function resizeTop(dy, t0, b0){var nt = clamp(t0+dy, 0, b0-56); sheet.top = nt; sheet.h = b0-nt; layoutSheet()}
+  drag(gripB, moveBy);
+  drag(gripT, resizeTop);
+  gripB.addEventListener('keydown', function(e){
+    if(e.key==='ArrowUp' || e.key==='ArrowDown'){e.preventDefault(); moveBy(e.key==='ArrowUp'?-28:28, sheet.top)}
+  });
+  gripT.addEventListener('keydown', function(e){
+    if(e.key==='ArrowUp' || e.key==='ArrowDown'){e.preventDefault(); resizeTop(e.key==='ArrowUp'?-28:28, sheet.top, sheet.top+sheet.h)}
+  });
+  window.addEventListener('resize', layoutSheet);
+
+  /* ---------- list interactions ---------- */
+  $('#list').addEventListener('click', function(e){
+    var row = e.target.closest('.row'); if(!row) return;
+    var id = row.dataset.id, d = deck(), w = d.words.find(function(x){return x.id===id});
+    if(e.target.closest('.chk')){
+      setLv(w, (w.lv+1)%4, false);
+      var b = row.querySelector('.chk');
+      b.dataset.lv = w.lv; b.setAttribute('aria-label','習熟度 '+LV[w.lv]); b.firstChild.textContent = SYM[w.lv];
+      row.classList.toggle('done', w.lv>=3);
+      renderCount(); touch(d.id);
+    } else if(e.target.closest('[data-info]')){
+      S.detail = id; render();
+    } else if(e.target.closest('.cell')){
+      if(shown.has(id)) shown.delete(id); else shown.add(id);
+      row.classList.toggle('show', shown.has(id));
+    }
+  });
+  $('#bSheet').onclick = function(){S.sheetOn = !S.sheetOn; renderBar(); layoutSheet()};
+  $('#bFull').onclick = function(){sheet.top = 0; sheet.h = stage.clientHeight; layoutSheet()};
+  $('#mM').onclick = function(){S.mode = 'm'; C = Q = null; touch(); render()};
+  $('#mT').onclick = function(){S.mode = 't'; C = Q = null; touch(); render()};
+  $('#bOnly').onclick = function(){S.only = !S.only; C = Q = null; touch(); render()};
+  function setView(v){S.view = v; S.detail = null; C = Q = null; render()}
+  $('#vL').onclick = function(){setView('list')};
+  $('#vC').onclick = function(){setView('card')};
+  $('#vQ').onclick = function(){setView('quiz')};
+  $('#vS').onclick = function(){setView('stats')};
+  function shuffle(a){a = a.slice(); for(var i=a.length-1;i>0;i--){var j = Math.floor(Math.random()*(i+1)); var t = a[i]; a[i] = a[j]; a[j] = t} return a}
+  $('#bShuf').onclick = function(){
+    S.order = shuffle(deck().words.map(function(x){return x.id}));
+    shown.clear(); C = Q = null; render();
+    $('#scroller').scrollTop = 0;
+  };
+  $('#bEdit').onclick = function(){S.edit = !S.edit; S.detail = null; C = Q = null; render()};
+  $('#deckSel').onchange = function(e){S.active = e.target.value; S.order = null; S.detail = null; shown.clear(); C = Q = null; touch(); render()};
+  $('#newDeck').onclick = function(){
+    var d = {id:uid(), name:'新しい単語帳', c:Date.now(), words:[]};
+    S.decks.push(d); S.active = d.id; S.order = null; S.detail = null; shown.clear(); C = Q = null; S.edit = true;
+    touch(d.id); render();
+    var n = $('#dname'); if(n){n.focus(); n.select()}
+  };
+
+  /* ---------- study: detail card, flashcards, quiz, progress ---------- */
+  function qa(w){return S.mode==='m' ? {q:w.t,a:w.m} : {q:w.m,a:w.t}}
+  function dots(b){return '●'.repeat(b+1)+'○'.repeat(3-b)}
+  function sec(title, html){return html ? '<div><h3>'+title+'</h3>'+html+'</div>' : ''}
+  function tags(a){return a.length ? '<div class="tags">'+a.map(function(s){return '<span>'+esc(s)+'</span>'}).join('')+'</div>' : ''}
+  function exList(a){return a.length ? '<ul class="ex">'+a.map(function(p){return '<li><span class="en">'+esc(p.en)+'</span>'+(p.ja?'<span class="ja">'+esc(p.ja)+'</span>':'')+'</li>'}).join('')+'</ul>' : ''}
+  function detailHtml(w){
+    var x = w.x, q = encodeURIComponent(plain(w.t)), h = '';
+    h += '<div class="row2"><button class="btn" data-act="back" type="button">← もどる</button></div>';
+    h += '<div class="dt"><div><div class="dw">'+esc(plain(w.t))+'</div>'
+      + '<div class="dm">'+(x && x.pos ? esc(x.pos)+'　' : '')+(x && x.ipa ? '<span>'+esc(x.ipa)+'</span>' : '')+'</div></div>'
+      + (HAS_TTS ? '<div class="row2 sm"><button class="btn" data-act="say" data-l="en-US" type="button">▶ 米音</button><button class="btn" data-act="say" data-l="en-GB" type="button">▶ 英音</button></div>' : '')
+      + sec('意味', '<p class="mean">'+esc(w.m || '（未入力）')+'</p>');
+    if(x){
+      h += sec('例文', exList(x.ex)) + sec('イディオム・決まり文句', exList(x.idioms))
+        + sec('コアイメージ', x.core ? '<p>'+esc(x.core)+'</p>' : '') + sec('使う場面', x.scenes ? '<p>'+esc(x.scenes)+'</p>' : '')
+        + sec('語源', x.etym ? '<p>'+esc(x.etym)+'</p>' : '') + sec('活用形', x.forms ? '<p>'+esc(x.forms)+'</p>' : '')
+        + sec('派生語', tags(x.deriv)) + sec('類義語', tags(x.syn)) + sec('反意語', tags(x.ant))
+        + sec('米英の違い', x.usuk ? '<p>'+esc(x.usuk)+'</p>' : '');
+    } else {
+      h += '<p class="nocard">まだ詳しい情報がありません。「編集」の「AIで作ったカードを取り込む」から、例文・語源・類義語などを足せます。</p>';
+    }
+    h += '</div>';
+    h += '<div class="row2" role="group" aria-label="習熟度">'+LV.map(function(l,i){
+      return '<button class="btn" type="button" data-act="lv" data-i="'+i+'" aria-pressed="'+(w.lv===i)+'">'+SYM[i]+' '+l+'<small>'+(S.gap[i]?fmtDays(S.gap[i]):'すぐ復習')+'</small></button>';
+    }).join('')+'</div>';
+    h += '<div class="pn"><h2>実際の使い方を見る</h2><div class="row2 sm">'
+      + '<a class="btn" target="_blank" rel="noopener" href="https://youglish.com/pronounce/'+q+'/english">YouGlish（実際の動画で発音）</a>'
+      + '<a class="btn" target="_blank" rel="noopener" href="https://www.youtube.com/results?search_query='+q+'+movie+scene">YouTube（洋画のシーン）</a>'
+      + '<a class="btn" target="_blank" rel="noopener" href="https://www.youtube.com/results?search_query='+q+'+meaning+usage">YouTube（使い方の解説）</a></div>'
+      + '<p class="note">検索結果のページが新しいタブで開きます。</p></div>';
+    return h;
+  }
+  function say(t,l){
+    try{
+      var u = new SpeechSynthesisUtterance(plain(t)); u.lang = l;
+      var v = speechSynthesis.getVoices().filter(function(z){return z.lang.replace('_','-')===l})[0];
+      if(v) u.voice = v;
+      speechSynthesis.cancel(); speechSynthesis.speak(u);
+    }catch(e){setStatus('この環境では読み上げできません')}
+  }
+  function startCard(all){
+    var now = Date.now(), list = viewWords(), due = list.filter(function(x){return x.n<=now});
+    if(!all && !due.length && list.length){C = {empty:true, next:Math.min.apply(null, list.map(function(x){return x.n}))}; return}
+    var pool = all ? list : due;
+    C = {ids:pool.map(function(x){return x.id}), i:0, flip:false, done:0, again:0};
+  }
+  function cardHtml(){
+    if(C.empty){
+      var left = C.next-Date.now(), when = left<36e5 ? '1時間以内' : (left<DAY ? Math.round(left/36e5)+'時間後' : Math.round(left/DAY)+'日後');
+      return '<div class="sc plain"><p class="big">今日の復習はありません</p><p class="sub">次の復習は'+when+'です。</p></div>'
+        + '<div class="row2"><button class="btn primary" data-act="all" type="button">全単語を練習する</button></div>';
+    }
+    var n = C.ids.length;
+    if(!n) return '<div class="sc plain"><p>対象の単語はありません。「完璧を除く」を外してください。</p></div>';
+    if(C.i>=n) return '<div class="sc plain"><p class="big">おつかれさま</p><p>覚え直しが必要: '+C.again+'回 ・ 進んだ: '+C.done+'回</p><p class="sub">「わからない」にした単語は、もう一度出てきます。</p></div>'
+      + '<div class="row2"><button class="btn primary" data-act="restart" type="button">もう一度</button></div>';
+    var w = wordById(C.ids[C.i]), p = qa(w), x = w.x;
+    var h = '<div class="meta"><span>'+(C.i+1)+' / '+n+'</span><span title="習熟度">'+dots(w.lv)+'</span></div>'
+      + '<div class="prog"><i style="width:'+Math.round(C.i/n*100)+'%"></i></div>'
+      + '<div class="sc" data-act="flip" role="button" tabindex="0"><div class="q">'+blank(p.q, C.flip)+'</div>'
+      + (C.flip ? '<div class="a">'+blank(p.a, true)+'</div>' + (x && x.ex[0] ? '<div class="eg">'+esc(x.ex[0].en)+(x.ex[0].ja ? '<br>'+esc(x.ex[0].ja) : '')+'</div>' : '') : '<div class="hintt">タップして答えを見る</div>')
+      + '</div>';
+    if(!C.flip) return h + '<div class="row2"><button class="btn primary" data-act="flip" type="button">答えを見る</button></div>';
+    return h + '<div class="row2">'+LV.map(function(l,i){
+      return '<button class="btn" type="button" data-act="g" data-i="'+i+'">'+SYM[i]+' '+l+'<small>'+(S.gap[i]?fmtDays(S.gap[i]):'すぐ')+'</small></button>';
+    }).join('')+'</div><div class="row2 sm"><button class="btn" data-act="detail" type="button">詳しいカードを開く</button></div>';
+  }
+  function makeOpts(){
+    var w = wordById(Q.ids[Q.i]), correct = plain(qa(w).a), seen = {};
+    seen[correct] = 1;
+    var pool = shuffle(deck().words.filter(function(x){return x.id!==w.id}).map(function(x){return plain(qa(x).a)}))
+      .filter(function(v){if(seen[v]) return false; seen[v] = 1; return true}).slice(0,3);
+    Q.correct = correct; Q.opts = shuffle(pool.concat(correct));
+  }
+  function startQuiz(retry){
+    var d = deck(), w = viewWords();
+    if(d.words.length<4){Q = {err:true}; return}
+    var base = retry ? w.filter(function(x){return retry.indexOf(x.id)>=0}) : shuffle(w).slice(0,20);
+    Q = {ids:base.map(function(x){return x.id}), i:0, score:0, wrong:[], pick:null, opts:[], correct:''};
+    if(Q.ids.length) makeOpts();
+  }
+  function quizHtml(){
+    if(Q.err) return '<div class="sc plain"><p>クイズは単語が4つ以上ある単語帳で使えます。</p></div>';
+    var n = Q.ids.length;
+    if(!n) return '<div class="sc plain"><p>対象の単語はありません。「完璧を除く」を外してください。</p></div>';
+    if(Q.i>=n){
+      var wr = Q.wrong.map(function(id){var p = qa(wordById(id)); return '<li>'+esc(plain(p.q))+' → '+esc(plain(p.a))+'</li>'}).join('');
+      return '<div class="sc plain"><p class="big">'+Q.score+' / '+n+' 問正解</p>'
+        + (wr ? '<p class="sub">間違えた単語</p><ul class="wl">'+wr+'</ul>' : '<p>全問正解です。</p>')+'</div>'
+        + '<div class="row2">'+(Q.wrong.length ? '<button class="btn" data-act="retry" type="button">間違えた単語だけ再挑戦</button>' : '')
+        + '<button class="btn primary" data-act="restart" type="button">もう一度</button></div>';
+    }
+    var p = qa(wordById(Q.ids[Q.i])), picked = Q.pick!==null;
+    return '<div class="meta"><span>'+(Q.i+1)+' / '+n+'</span><span>正解 '+Q.score+'</span></div>'
+      + '<div class="prog"><i style="width:'+Math.round(Q.i/n*100)+'%"></i></div>'
+      + '<div class="sc plain"><div class="q">'+esc(plain(p.q))+'</div></div>'
+      + Q.opts.map(function(o,i){
+          var cls = 'btn opt'+(picked ? (o===Q.correct ? ' ok' : (i===Q.pick ? ' bad' : '')) : '');
+          return '<button class="'+cls+'" type="button" data-act="pick" data-i="'+i+'"'+(picked?' disabled':'')+'>'+esc(o)+'</button>';
+        }).join('')
+      + (picked ? '<div class="row2"><button class="btn primary" data-act="next" type="button">'+(Q.i+1>=n ? '結果を見る' : '次へ')+'</button></div>' : '');
+  }
+  function statsHtml(){
+    var all = []; S.decks.forEach(function(d){all = all.concat(d.words)});
+    var cnt = [0,0,0,0]; all.forEach(function(w){cnt[w.lv]++});
+    var now = Date.now(), due = all.filter(function(w){return w.n<=now}).length;
+    var days = [], i, dt;
+    for(i=13;i>=0;i--){dt = new Date(); dt.setDate(dt.getDate()-i); days.push(dayKey(dt.getTime()))}
+    var get = function(k){return S.log[k] || {a:0,r:0}};
+    var mx = 0; days.forEach(function(k){mx = Math.max(mx, get(k).a, get(k).r)});
+    var top = [5,10,20,40,100,200,500,1000,5000].filter(function(v){return v>=mx})[0] || mx;
+    var streak = 0;
+    for(i=0;i<120;i++){
+      dt = new Date(); dt.setDate(dt.getDate()-i);
+      var e = S.log[dayKey(dt.getTime())];
+      if(e && (e.a+e.r)>0) streak++; else if(i>0) break;
+    }
+    var W = 360, H = 190, L = 30, R = 8, T = 10, B = 28, pw = W-L-R, ph = H-T-B, gw = pw/14, bw = 8;
+    var svg = '<svg class="chart" viewBox="0 0 '+W+' '+H+'" role="img" aria-label="直近14日の復習数と追加数">';
+    [0, top/2, top].forEach(function(v){
+      var y = T+ph-v/top*ph;
+      svg += '<line class="gl" x1="'+L+'" x2="'+(W-R)+'" y1="'+y+'" y2="'+y+'"/><text class="ax" x="'+(L-5)+'" y="'+(y+3)+'" text-anchor="end">'+v+'</text>';
+    });
+    days.forEach(function(k,j){
+      var e = get(k), cx = L+gw*j+gw/2, hr = e.r/top*ph, ha = e.a/top*ph;
+      if(e.r) svg += '<rect class="b1" x="'+(cx-bw-1)+'" y="'+(T+ph-hr)+'" width="'+bw+'" height="'+hr+'" rx="1"/>';
+      if(e.a) svg += '<rect class="b2" x="'+(cx+1)+'" y="'+(T+ph-ha)+'" width="'+bw+'" height="'+ha+'" rx="1"/>';
+      if(j%3===1 || j===13) svg += '<text class="ax" x="'+cx+'" y="'+(H-10)+'" text-anchor="middle">'+k.slice(5).replace('-','/')+'</text>';
+    });
+    svg += '</svg>';
+    var today = get(days[13]), total = all.length;
+    var bar = '<div class="lvbar" role="img" aria-label="習熟度の内訳">'+cnt.map(function(c,j){return c ? '<i style="flex:'+c+';background:var(--lv'+j+')"></i>' : ''}).join('')+'</div>'
+      + '<div class="lg">'+cnt.map(function(c,j){return '<span><i style="background:var(--lv'+j+')"></i>'+SYM[j]+' '+LV[j]+' '+c+'</span>'}).join('')+'</div>';
+    return '<div class="tiles"><div class="tile"><b>'+total+'</b><span>登録した単語</span></div>'
+      + '<div class="tile"><b>'+cnt[3]+'</b><span>完璧な単語</span></div>'
+      + '<div class="tile"><b>'+due+'</b><span>今日の復習</span></div>'
+      + '<div class="tile"><b>'+streak+'</b><span>連続した日数</span></div></div>'
+      + '<div class="pn"><h2>習熟度の内訳（全単語帳）</h2>'+(total ? bar : '<p class="note">単語を登録すると表示されます。</p>')+'</div>'
+      + '<div class="pn"><h2>直近14日の学習</h2>'+svg
+      + '<div class="lg"><span><i style="background:var(--accent)"></i>復習した数</span><span><i style="background:var(--muted)"></i>追加した数</span></div>'
+      + '<p class="note">今日: 復習 '+today.r+' ・ 追加 '+today.a+'</p></div>'
+      + '<div class="pn"><h2>復習の間隔（日）</h2><div class="gaps">'+LV.map(function(l,j){
+          return '<label>'+SYM[j]+' '+l+'<input type="number" min="0" step="0.5" data-gap="'+j+'" value="'+S.gap[j]+'"></label>';
+        }).join('')+'</div>'
+      + '<div class="row2 sm"><button class="btn" data-act="gapreset" type="button">初期値に戻す</button></div>'
+      + '<p class="note">習熟度を選んだ日から、この日数がたつと「復習」に出ます（0は、すぐ）。復習の数は「カード」のタブに表示されます。通知を送る機能はありません。</p></div>';
+  }
+  function renderStudy(){
+    var el = $('#study'), d = deck();
+    if(S.detail){
+      var dw = wordById(S.detail);
+      if(dw){el.innerHTML = detailHtml(dw); return}
+      S.detail = null; render(); return;
+    }
+    if(S.view==='stats'){el.innerHTML = statsHtml(); return}
+    if(!d.words.length){el.innerHTML = '<div class="sc plain"><p>この単語帳にはまだ単語がありません。「編集」から追加してください。</p></div>'; return}
+    if(S.view==='card'){ if(!C) startCard(false); el.innerHTML = cardHtml() }
+    else { if(!Q) startQuiz(); el.innerHTML = quizHtml() }
+  }
+  $('#study').addEventListener('click', function(e){
+    var el = e.target.closest('[data-act]'); if(!el) return;
+    var act = el.dataset.act, d = deck(), w;
+    if(act==='flip'){ C.flip = !C.flip }
+    else if(act==='g'){
+      w = wordById(C.ids[C.i]); var lv = +el.dataset.i; setLv(w, lv, true);
+      if(lv===0){C.again++; C.ids.push(w.id)} else C.done++;
+      C.i++; C.flip = false; touch(d.id);
+    }
+    else if(act==='all'){ startCard(true) }
+    else if(act==='restart'){ C = null; Q = null }
+    else if(act==='retry'){ startQuiz(Q.wrong.slice()) }
+    else if(act==='pick'){
+      if(Q.pick!==null) return;
+      Q.pick = +el.dataset.i; w = wordById(Q.ids[Q.i]);
+      var good = Q.opts[Q.pick]===Q.correct;
+      if(good) Q.score++; else Q.wrong.push(w.id);
+      setLv(w, good ? Math.min(3,w.lv+1) : 0, true); touch(d.id);
+    }
+    else if(act==='next'){ Q.i++; Q.pick = null; if(Q.i<Q.ids.length) makeOpts() }
+    else if(act==='detail'){ S.detail = C.ids[C.i]; render(); return }
+    else if(act==='back'){ S.detail = null; render(); return }
+    else if(act==='say'){ say(wordById(S.detail).t, el.dataset.l); return }
+    else if(act==='lv'){ setLv(wordById(S.detail), +el.dataset.i, true); touch(d.id) }
+    else if(act==='gapreset'){ S.gap = [0,1,4,14]; touch() }
+    renderStudy(); renderCount();
+  });
+  $('#study').addEventListener('change', function(e){
+    if(e.target.dataset.gap!==undefined){
+      S.gap[+e.target.dataset.gap] = Math.max(0, +e.target.value || 0);
+      touch(); renderStudy();
+    }
+  });
+  $('#study').addEventListener('keydown', function(e){
+    if((e.key==='Enter' || e.key===' ') && e.target.matches('.sc[data-act]')){e.preventDefault(); e.target.click()}
+  });
+
+  /* ---------- editor ---------- */
+  function edRows(){
+    var d = deck();
+    return d.words.length ? d.words.map(function(x){
+      var others = S.decks.filter(function(o){return o.id!==d.id});
+      return '<div class="er" data-id="'+x.id+'">'
+        + '<input data-f="t" value="'+esc(x.t)+'" aria-label="単語">'
+        + '<input data-f="m" value="'+esc(x.m)+'" aria-label="意味">'
+        + '<div class="act"><button class="btn" type="button" data-det="1">詳しいカード'+(x.x ? '' : '（未作成）')+'</button>'
+        + (others.length ? '<select data-move="1" aria-label="別の単語帳へ移動"><option value="">単語帳を移動…</option>'+others.map(function(o){return '<option value="'+o.id+'">'+esc(o.name)+'</option>'}).join('')+'</select>' : '')
+        + '<button class="btn" type="button" data-del="1">削除</button><span class="lvmark">'+SYM[x.lv]+' '+LV[x.lv]+'</span></div></div>';
+    }).join('') : '<p class="hint">まだ単語がありません。</p>';
+  }
+  function renderEditor(){
+    var d = deck();
+    $('#editor').innerHTML =
+      '<div><label for="dname">単語帳の名前</label><div class="inline"><input id="dname" value="'+esc(d.name)+'">'
+      + '<button class="btn danger" id="delDeck" type="button">この単語帳を削除</button></div></div>'
+      + '<div><h2>AIで作ったカードを取り込む</h2><textarea id="aiW" rows="3" aria-label="単語・熟語・フレーズ" placeholder="調べたい単語・熟語・フレーズ（1行に1つ、10個まで）&#10;例: reluctant&#10;look forward to"></textarea>'
+      + '<div class="inline" style="margin-top:8px"><button class="btn primary" id="aiCopy" type="button">① プロンプトをコピー</button><span class="hint" id="aiMsg" style="margin:0;align-self:center">コピーしたものを、お使いのAI（ClaudeやChatGPTなど）に貼り付けます。</span></div>'
+      + '<textarea id="aiP" rows="4" hidden aria-label="コピー用のプロンプト" style="margin-top:8px"></textarea>'
+      + '<textarea id="aiJ" rows="4" aria-label="AIの返答" placeholder="② AIの返答をここに貼り付け" style="margin-top:8px"></textarea>'
+      + '<div class="inline" style="margin-top:8px"><button class="btn" id="aiImport" type="button">③ カードを取り込む</button><span class="hint" id="aiMsg2" style="margin:0;align-self:center"></span></div></div>'
+      + '<div><h2>単語を追加</h2><div class="add"><input id="addT" placeholder="単語（例: reluctant）" aria-label="単語"><input id="addM" placeholder="意味（例: 気が進まない）" aria-label="意味"><button class="btn" id="addBtn" type="button">追加</button></div>'
+      + '<p class="hint">文の一部だけ赤くしたいときは [[ ]] で囲みます。例: She was [[reluctant]] to go.</p></div>'
+      + '<div><h2>まとめて追加・書き出し</h2><textarea id="bulk" rows="5" aria-label="まとめて追加" placeholder="1行に1語。単語と意味は、タブ・カンマ・「=」のどれかで区切ります"></textarea>'
+      + '<div class="inline" style="margin-top:8px"><button class="btn" id="bulkAdd" type="button">まとめて追加</button><button class="btn" id="bulkOut" type="button">この単語帳をテキストにする</button><button class="btn" id="bulkCopy" type="button">コピー</button></div></div>'
+      + '<div><h2>バックアップ</h2><div class="inline"><button class="btn" id="expBtn" type="button">データを書き出す</button><button class="btn" id="impBtn" type="button">データを読み込む</button><input id="impFile" type="file" accept="application/json,.json" hidden><span class="hint" id="bkMsg" style="margin:0;align-self:center"></span></div>'
+      + '<p class="hint">データはこのブラウザの中にだけ保存されます。端末を変えるときや、ブラウザのデータを消す前に書き出してください。読み込むと同じ単語帳は上書きされ、ほかの単語帳は残ります。</p></div>'
+      + '<div><h2>単語一覧（<span id="edN">'+d.words.length+'</span>）</h2><div id="edRows">'+edRows()+'</div></div>';
+  }
+  function refreshRows(){$('#edRows').innerHTML = edRows(); $('#edN').textContent = deck().words.length}
+  function splitLine(line){
+    var seps = ['\t',' = ','=',',','，','、'];
+    for(var i=0;i<seps.length;i++){
+      var p = line.indexOf(seps[i]);
+      if(p>0) return [line.slice(0,p).trim(), line.slice(p+seps[i].length).trim()];
+    }
+    return null;
+  }
+  var ed = $('#editor');
+  ed.addEventListener('change', function(e){
+    var d = deck(), t = e.target;
+    if(t.id==='dname'){
+      d.name = t.value.trim() || '単語帳'; touch(d.id); renderDecks();
+    } else if(t.dataset.f){
+      var w = d.words.find(function(x){return x.id===t.closest('.er').dataset.id});
+      if(w){w[t.dataset.f] = t.value; touch(d.id)}
+    } else if(t.dataset.move && t.value){
+      var id = t.closest('.er').dataset.id, to = S.decks.find(function(x){return x.id===t.value});
+      var w2 = d.words.find(function(x){return x.id===id});
+      if(w2 && to){
+        d.words = d.words.filter(function(x){return x.id!==id}); to.words.push(w2);
+        touch(d.id); dirty.add(to.id); refreshRows(); renderCount();
+        setStatus('「'+to.name+'」へ移動しました');
+      }
+    }
+  });
+  ed.addEventListener('change', function(e){
+    if(e.target.id!=='impFile') return;
+    var f = e.target.files && e.target.files[0]; if(!f) return;
+    var rd = new FileReader();
+    rd.onload = function(){
+      if(importData(String(rd.result))){C = Q = null; touch(); render(); setStatus('読み込みました')}
+      else {var m = $('#bkMsg'); if(m) m.textContent = '読み込めませんでした。書き出したファイルを選んでください。'}
+    };
+    rd.readAsText(f); e.target.value = '';
+  });
+  ed.addEventListener('keydown', function(e){
+    if(e.key==='Enter' && (e.target.id==='addT' || e.target.id==='addM')) $('#addBtn').click();
+  });
+  ed.addEventListener('click', function(e){
+    var d = deck(), t = e.target;
+    if(t.id==='aiCopy'){
+      var box = $('#aiW'), msg = $('#aiMsg');
+      var lines = box.value.split(/\r?\n/).map(function(x){return x.trim()}).filter(Boolean).slice(0,10);
+      if(!lines.length){box.focus(); return}
+      var txt = aiPrompt(lines);
+      var ok = function(){msg.textContent = 'コピーしました。お使いのAIに貼り付けてください。'};
+      var fb = function(){var p = $('#aiP'); p.value = txt; p.hidden = false; p.select(); msg.textContent = '下の枠を選択しました。コピーしてAIに貼り付けてください。'};
+      if(navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(txt).then(ok, fb); else fb();
+    } else if(t.id==='aiImport'){
+      var n0 = importCards(d, $('#aiJ').value), m2 = $('#aiMsg2');
+      if(n0<0) m2.textContent = 'JSONを読み取れませんでした。AIの返答をそのまま貼り付けてください。';
+      else if(!n0) m2.textContent = '取り込めるカードがありませんでした。';
+      else {touch(d.id); $('#aiJ').value = ''; m2.textContent = n0+'語のカードを取り込みました。'; refreshRows(); renderCount()}
+    } else if(t.id==='expBtn'){
+      exportData();
+    } else if(t.id==='impBtn'){
+      $('#impFile').click();
+    } else if(t.id==='addBtn'){
+      var a = $('#addT'), b = $('#addM');
+      if(!a.value.trim() || !b.value.trim()){(a.value.trim() ? b : a).focus(); return}
+      d.words.push({id:uid(), t:a.value.trim(), m:b.value.trim(), lv:0, n:0, x:null});
+      bump('a'); a.value = ''; b.value = ''; touch(d.id); refreshRows(); renderCount(); a.focus();
+    } else if(t.id==='bulkAdd'){
+      var n = 0;
+      $('#bulk').value.split(/\r?\n/).forEach(function(l){
+        var p = l.trim() && splitLine(l.trim());
+        if(p && p[0] && p[1]){d.words.push({id:uid(), t:p[0], m:p[1], lv:0, n:0, x:null}); n++}
+      });
+      if(n){bump('a', n); $('#bulk').value = ''; touch(d.id); refreshRows(); renderCount(); setStatus(n+'語を追加しました')}
+      else setStatus('追加できる行がありませんでした。区切り文字を確認してください');
+    } else if(t.id==='bulkOut'){
+      $('#bulk').value = d.words.map(function(x){return x.t+'\t'+x.m}).join('\n');
+    } else if(t.id==='bulkCopy'){
+      var ta = $('#bulk'); ta.select();
+      var done = function(){setStatus('コピーしました')};
+      if(navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(ta.value).then(done, function(){setStatus('選択しました。コピーしてください')});
+      else setStatus('選択しました。コピーしてください');
+    } else if(t.dataset.det){
+      S.detail = t.closest('.er').dataset.id; S.edit = false; C = Q = null; render();
+    } else if(t.dataset.del){
+      var wid = t.closest('.er').dataset.id;
+      d.words = d.words.filter(function(x){return x.id!==wid}); shown.delete(wid);
+      touch(d.id); refreshRows(); renderCount();
+    } else if(t.id==='delDeck'){
+      if(!t.classList.contains('armed')){
+        t.classList.add('armed'); t.textContent = 'もう一度押すと削除します';
+        setTimeout(function(){if(t.isConnected){t.classList.remove('armed'); t.textContent = 'この単語帳を削除'}}, 3500);
+        return;
+      }
+      var did = d.id;
+      if(S.decks.length===1){
+        d.words = []; d.name = '新しい単語帳'; touch(d.id);
+      } else {
+        gone[did] = d._nch || 0;
+        S.decks = S.decks.filter(function(x){return x.id!==did}); S.active = S.decks[0].id; touch(did);
+      }
+      S.order = null; shown.clear(); render();
+    }
+  });
+
+  /* ---------- start ---------- */
+  var local = readLocal();
+  if(local && local.decks && local.decks.length){
+    S.decks = local.decks.map(norm); S.active = local.active; S.mode = local.mode==='t' ? 't' : 'm'; S.only = !!local.only;
+    if(Array.isArray(local.gap) && local.gap.length===4) S.gap = local.gap.map(function(v){return Math.max(0,+v||0)});
+    if(local.log && typeof local.log==='object') S.log = local.log;
+    if(!deck()) S.active = S.decks[0].id;
+  } else {
+    var s0 = sample(); S.decks = [s0]; S.active = s0.id;
+  }
+  render();
+  setStatus('データはこのブラウザに保存されます');
+})();
+if('serviceWorker' in navigator && location.protocol.indexOf('http')===0){
+  window.addEventListener('load', function(){navigator.serviceWorker.register('sw.js').catch(function(){})});
+}
+</script>
+</body>
+</html>
+
